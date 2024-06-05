@@ -10,7 +10,10 @@ import sys
 
 sys.path.append('/Users/wangr/code/')
 import collections
-from efficent_kan import KAN
+
+sys.path.append('/Users/wangr/code/efficient-kan/src/')
+from efficient_kan import KAN
+
 
 dtype = torch.cuda.FloatTensor
 torch.set_default_tensor_type('torch.cuda.FloatTensor')
@@ -205,6 +208,3 @@ class KAN_VAE(nn.Module):
         x = self.encoder(x)
         x = self.decoder(x)
         return x
-
-
-
