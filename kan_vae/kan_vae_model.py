@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from kan import KAN
+from kan_model import KAN
 
 
 class KAN_VAE(nn.Module):
