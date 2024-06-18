@@ -1,31 +1,23 @@
 import os
 import torch
-import torch.nn as nn
-import torch.optim as optim
 import torchvision
+import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 from kan_vae_model import KAN_VAE
 
-# 设置环境变量
+
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
-# 检查GPU是否可用
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# 加载 MNIST 数据集
 transform = transforms.Compose(
-    [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
-)
-
-trainset = torchvision.datasets.MNIST(
-    root="/home/wangr/code/efficient-kan/src/data",
-    train=True,
-    download=False,
-    transform=transform,
+    [
+        transforms.ToTensor(), 
+        transforms.Normalize((0.5,), (0.5,))
+    ]
 )
 
 valset = torchvision.datasets.MNIST(
@@ -35,62 +27,72 @@ valset = torchvision.datasets.MNIST(
     transform=transform,
 )
 
-trainloader = DataLoader(trainset, batch_size=64, shuffle=True)
-valloader = DataLoader(valset, batch_size=64, shuffle=False)
+valloader = DataLoader(
+    valset, batch_size=64, shuffle=False
+)
 
-# 定义模型和优化器
-input_dim = 28 * 28  # MNIST 输入维度
-hidden_dims = [512, 256]
-latent_dim = 64
+input_dim = 28 * 28
+encoder_hidden_dims = [256, 64]
+decoder_hidden_dims = [64, 256]
+latent_dim = 16
 
 vae = KAN_VAE(
     input_dim,
-    hidden_dims,
+    encoder_hidden_dims,
+    decoder_hidden_dims,
     latent_dim,
-).to(
-    device
-)  # 将模型移动到GPU
+).to(device)
 
-optimizer = optim.Adam(vae.parameters(), lr=1e-3)
+model_path = "/home/wangr/data/code/MyGithub/kan_vae/model_save/kan_vae_mnist.pth"
+vae.load_state_dict(torch.load(model_path))
+vae.eval()
 
-# 训练模型
-num_epochs = 100
-for epoch in range(num_epochs):
-    vae.train()
-    train_loss = 0
-    progress_bar = tqdm(trainloader, desc=f"Epoch {epoch+1}")
+val_loss = 0
+reconstruction_errors = []
+originals = []
+reconstructions = []
 
-    for batch in progress_bar:
+with torch.no_grad():
+    for batch in valloader:
         x, _ = batch
-        x = x.view(x.size(0), -1).to(device)  # 将数据移动到GPU
+        x = x.view(x.size(0), -1).to(device)
 
-        optimizer.zero_grad()
         reconstructed, mu, log_var = vae(x)
         loss = vae.loss_function(reconstructed, x, mu, log_var)
-        loss.backward()
-        train_loss += loss.item()
-        optimizer.step()
+        val_loss += loss.item()
 
-        progress_bar.set_postfix(loss=loss.item())
+        reconstruction_error = torch.mean((reconstructed - x) ** 2, dim=1)
+        reconstruction_errors.extend(reconstruction_error.cpu().numpy())
 
-    print(f"Epoch {epoch+1}, Loss: {train_loss/len(trainloader.dataset)}")
+        originals.append(x.cpu().view(-1, 28, 28))
+        reconstructions.append(reconstructed.cpu().view(-1, 28, 28))
 
-    # 验证模型
-    vae.eval()
-    val_loss = 0
-    with torch.no_grad():
-        for batch in valloader:
-            x, _ = batch
-            x = x.view(x.size(0), -1).to(device)
+average_val_loss = val_loss / len(valloader.dataset)
+print(f"Validation Loss: {average_val_loss}")
 
-            reconstructed, mu, log_var = vae(x)
-            loss = vae.loss_function(reconstructed, x, mu, log_var)
-            val_loss += loss.item()
-
-    print(f"Epoch {epoch+1}, Validation Loss: {val_loss/len(valloader.dataset)}")
-
-# 保存模型
-torch.save(
-    vae.state_dict(),
-    "/home/wangr/data/code/MyGithub/kan_vae/model_save/kan_vae_mnist.pth",
+reconstruction_errors = torch.tensor(reconstruction_errors)
+print(
+    f"Reconstruction Error - Mean: {reconstruction_errors.mean().item()}, Std: {reconstruction_errors.std().item()}"
 )
+
+
+def show_images(originals, reconstructions, n=10):
+    plt.figure(figsize=(20, 4))
+    for i in range(n):
+        ax = plt.subplot(3, n, i + 1)
+        plt.imshow(originals[i], cmap="gray")
+        ax.axis("off")
+
+        ax = plt.subplot(3, n, i + 1 + n)
+        plt.imshow(reconstructions[i], cmap="gray")
+        ax.axis("off")
+
+        ax = plt.subplot(3, n, i + 1 + 2 * n)
+        plt.imshow(originals[i] - reconstructions[i], cmap="gray")
+        ax.axis("off")
+
+
+originals = torch.cat(originals)[:10]
+reconstructions = torch.cat(reconstructions)[:10]
+show_images(originals, reconstructions, n=10)
+plt.show()

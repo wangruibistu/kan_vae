@@ -36,22 +36,27 @@ trainloader = DataLoader(trainset, batch_size=64, shuffle=True)
 valloader = DataLoader(valset, batch_size=64, shuffle=False)
 
 input_dim = 28 * 28 
-hidden_dims = [512, 256]
-latent_dim = 64
+encoder_hidden_dims = [256, 64]
+decoder_hidden_dims = [64, 256]
+latent_dim = 16
 
 vae = KAN_VAE(
     input_dim,
-    hidden_dims,
+    encoder_hidden_dims,
+    decoder_hidden_dims,
     latent_dim,
 ).to(device)
 
 optimizer = optim.Adam(vae.parameters(), lr=1e-3)
 
-num_epochs = 100
+num_epochs = 1000
 for epoch in range(num_epochs):
     vae.train()
     train_loss = 0
-    progress_bar = tqdm(trainloader, desc=f"Epoch {epoch+1}")
+    progress_bar = tqdm(
+        trainloader, 
+        desc=f"Epoch {epoch+1}"
+        )
 
     for batch in progress_bar:
         x, _ = batch  
@@ -72,4 +77,4 @@ for epoch in range(num_epochs):
 torch.save(
     vae.state_dict(), 
     "/home/wangr/data/code/MyGithub/kan_vae/model_save/kan_vae_mnist.pth"
-    )
+)
