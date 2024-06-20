@@ -20,13 +20,14 @@ transform = transforms.Compose(
     [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
 )
 trainset = torchvision.datasets.MNIST(
-    root="/home/wangr/code/efficient-kan/src/data",
-    train=True,
-    download=False,
-    transform=transform,
-)
+        root="/home/wangr/data/code/MyGithub/kan_vae/data",
+        train=True,
+        download=False,
+        transform=transform,
+    )
+
 valset = torchvision.datasets.MNIST(
-    root="/home/wangr/code/efficient-kan/src/data",
+    root="/home/wangr/data/code/MyGithub/kan_vae/data",
     train=False,
     download=False,
     transform=transform,
@@ -76,5 +77,5 @@ for epoch in range(num_epochs):
 
 torch.save(
     vae.state_dict(), 
-    "/home/wangr/data/code/MyGithub/kan_vae/model_save/kan_vae_mnist.pth"
+    "/home/wangr/data/code/MyGithub/kan_vae/model_save/kan_vae_mnist1d.pth"
 )
