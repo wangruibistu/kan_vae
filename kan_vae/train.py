@@ -54,10 +54,7 @@ num_epochs = 1000
 for epoch in range(num_epochs):
     vae.train()
     train_loss = 0
-    progress_bar = tqdm(
-        trainloader, 
-        desc=f"Epoch {epoch+1}"
-        )
+    progress_bar = tqdm(trainloader, desc=f"Epoch {epoch+1}")
 
     for batch in progress_bar:
         x, _ = batch  

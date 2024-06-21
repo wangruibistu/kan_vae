@@ -1,7 +1,138 @@
 import torch
-import torch.nn as nn
+import math
+import numpy as np
+from typing import List, Tuple, Union
 import torch.nn.functional as F
 import math
+
+
+def calc_out_dims(matrix, kernel_side, stride, dilation, padding):
+    batch_size, n_channels, n, m = matrix.shape
+    h_out = (
+        np.floor(
+            (n + 2 * padding[0] - kernel_side - (kernel_side - 1) * (dilation[0] - 1))
+            / stride[0]
+        ).astype(int)
+        + 1
+    )
+    w_out = (
+        np.floor(
+            (m + 2 * padding[1] - kernel_side - (kernel_side - 1) * (dilation[1] - 1))
+            / stride[1]
+        ).astype(int)
+        + 1
+    )
+    b = [kernel_side // 2, kernel_side // 2]
+    return h_out, w_out, batch_size, n_channels
+
+
+def kan_conv2d(
+    matrix,  # but as torch tensors. Kernel side asume q el kernel es cuadrado
+    kernel,
+    kernel_side,
+    stride=(1, 1),
+    dilation=(1, 1),
+    padding=(0, 0),
+    device="cuda",
+) -> torch.Tensor:
+    """Makes a 2D convolution with the kernel over matrix using defined stride, dilation and padding along axes.
+
+    Args:
+        matrix (batch_size, colors, n, m]): 2D matrix to be convolved.
+        kernel  (function]): 2D odd-shaped matrix (e.g. 3x3, 5x5, 13x9, etc.).
+        stride (Tuple[int, int], optional): Tuple of the stride along axes. With the `(r, c)` stride we move on `r` pixels along rows and on `c` pixels along columns on each iteration. Defaults to (1, 1).
+        dilation (Tuple[int, int], optional): Tuple of the dilation along axes. With the `(r, c)` dilation we distancing adjacent pixels in kernel by `r` along rows and `c` along columns. Defaults to (1, 1).
+        padding (Tuple[int, int], optional): Tuple with number of rows and columns to be padded. Defaults to (0, 0).
+
+    Returns:
+        np.ndarray: 2D Feature map, i.e. matrix after convolution.
+    """
+    h_out, w_out, batch_size, n_channels = calc_out_dims(
+        matrix, kernel_side, stride, dilation, padding
+    )
+
+    matrix_out = torch.zeros((batch_size, n_channels, h_out, w_out)).to(
+        device
+    )  # estamos asumiendo que no existe la dimension de rgb
+    unfold = torch.nn.Unfold(
+        kernel_size=(kernel_side, kernel_side),
+        dilation=dilation,
+        padding=padding,
+        stride=stride,
+    )
+
+    for channel in range(n_channels):
+        conv_groups = unfold(matrix[:, channel, :, :].unsqueeze(1)).transpose(1, 2)
+        for k in range(batch_size):
+            matrix_out[k, channel, :, :] = kernel.forward(conv_groups[k, :, :]).reshape(
+                (h_out, w_out)
+            )
+    return matrix_out
+
+
+def multiple_convs_kan_conv2d(
+    matrix,  # but as torch tensors. Kernel side asume q el kernel es cuadrado
+    kernels,
+    kernel_side,
+    stride=(1, 1),
+    dilation=(1, 1),
+    padding=(0, 0),
+    device="cuda",
+) -> torch.Tensor:
+    """Makes a 2D convolution with the kernel over matrix using defined stride, dilation and padding along axes.
+
+    Args:
+        matrix (batch_size, colors, n, m]): 2D matrix to be convolved.
+        kernel  (function]): 2D odd-shaped matrix (e.g. 3x3, 5x5, 13x9, etc.).
+        stride (Tuple[int, int], optional): Tuple of the stride along axes. With the `(r, c)` stride we move on `r` pixels along rows and on `c` pixels along columns on each iteration. Defaults to (1, 1).
+        dilation (Tuple[int, int], optional): Tuple of the dilation along axes. With the `(r, c)` dilation we distancing adjacent pixels in kernel by `r` along rows and `c` along columns. Defaults to (1, 1).
+        padding (Tuple[int, int], optional): Tuple with number of rows and columns to be padded. Defaults to (0, 0).
+
+    Returns:
+        np.ndarray: 2D Feature map, i.e. matrix after convolution.
+    """
+    h_out, w_out, batch_size, n_channels = calc_out_dims(
+        matrix, kernel_side, stride, dilation, padding
+    )
+    n_convs = len(kernels)
+    matrix_out = torch.zeros((batch_size, n_channels * n_convs, h_out, w_out)).to(
+        device
+    )  # estamos asumiendo que no existe la dimension de rgb
+    unfold = torch.nn.Unfold(
+        (kernel_side, kernel_side), dilation=dilation, padding=padding, stride=stride
+    )
+    conv_groups = (
+        unfold(matrix[:, :, :, :])
+        .view(batch_size, n_channels, kernel_side * kernel_side, h_out * w_out)
+        .transpose(2, 3)
+    )  # reshape((batch_size,n_channels,h_out,w_out))
+    for channel in range(n_channels):
+        for kern in range(n_convs):
+            matrix_out[:, kern + channel * n_convs, :, :] = (
+                kernels[kern]
+                .conv.forward(conv_groups[:, channel, :, :].flatten(0, 1))
+                .reshape((batch_size, h_out, w_out))
+            )
+    return matrix_out
+
+
+def add_padding(matrix: np.ndarray, padding: Tuple[int, int]) -> np.ndarray:
+    """Adds padding to the matrix.
+
+    Args:
+        matrix (np.ndarray): Matrix that needs to be padded. Type is List[List[float]] casted to np.ndarray.
+        padding (Tuple[int, int]): Tuple with number of rows and columns to be padded. With the `(r, c)` padding we addding `r` rows to the top and bottom and `c` columns to the left and to the right of the matrix
+
+    Returns:
+        np.ndarray: Padded matrix with shape `n + 2 * r, m + 2 * c`.
+    """
+    n, m = matrix.shape
+    r, c = padding
+
+    padded_matrix = np.zeros((n + r * 2, m + c * 2))
+    padded_matrix[r : n + r, c : m + c] = matrix
+
+    return padded_matrix
 
 
 class KANLinear(torch.nn.Module):
@@ -18,7 +149,6 @@ class KANLinear(torch.nn.Module):
         base_activation=torch.nn.SiLU,
         grid_eps=0.02,
         grid_range=[-1, 1],
-        device=None
     ):
         super(KANLinear, self).__init__()
         self.in_features = in_features
@@ -238,118 +368,115 @@ class KANLinear(torch.nn.Module):
         )
 
 
-def calculate_unfold_shape(input_chennal, input_shape, kernel_size, stride, padding):
-    H, W = input_shape
-    # print(N, C, H, W)
-    unfold_height = (H + 2 * padding - kernel_size) // stride + 1
-    unfold_width = (W + 2 * padding - kernel_size) // stride + 1
-    unfold_dim = input_chennal * kernel_size * kernel_size
-    num_patches = unfold_height * unfold_width
-
-    return unfold_dim, num_patches
-
-
-def calculate_deconv_output_shape(
-    input_shape, kernel_size, stride, padding, output_padding=0
-):
-    kernel_size = kernel_size[0] if isinstance(kernel_size, tuple) else kernel_size
-    stride = stride[0] if isinstance(stride, tuple) else stride
-    padding = padding[0] if isinstance(padding, tuple) else padding
-    output_padding = (
-        output_padding[0] if isinstance(output_padding, tuple) else output_padding
-    )
-    H_in, W_in = input_shape
-    H_out = (H_in - 1) * stride - 2 * padding + kernel_size + output_padding
-    W_out = (W_in - 1) * stride - 2 * padding + kernel_size + output_padding
-    return (H_out, W_out)
-
-
-class KANConvTranspose2d(nn.Module):
+class KAN(torch.nn.Module):
     def __init__(
         self,
-        in_channels,
-        in_shape,
-        out_channels,
-        kernel_size,
-        stride=1,
-        padding=0,
-        output_padding=0,
-        bias=True,
-        **kwargs,
+        layers_hidden,
+        grid_size=5,
+        spline_order=3,
+        scale_noise=0.1,
+        scale_base=1.0,
+        scale_spline=1.0,
+        base_activation=torch.nn.SiLU,
+        grid_eps=0.02,
+        grid_range=[-1, 1],
     ):
-        super(KANConvTranspose2d, self).__init__()
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
-        self.stride = stride if isinstance(stride, tuple) else (stride, stride)
-        self.padding = padding if isinstance(padding, tuple) else (padding, padding)
-        self.output_padding = output_padding if isinstance(output_padding, tuple) else (output_padding, output_padding)
-        self.unfold_in_size = calculate_unfold_shape(
-            input_chennal=in_channels,
-            input_shape=in_shape,
-            kernel_size=self.kernel_size[0],
-            padding=self.padding[0],
-            stride=self.stride[0],
-        )
-        self.output_height, self.output_width = calculate_deconv_output_shape(
-            in_shape, kernel_size, stride, padding, output_padding
-        )
-        self.unfold_out_size = calculate_unfold_shape(
-            input_chennal=out_channels,
-            input_shape=[self.output_height, self.output_width],
-            kernel_size=self.kernel_size[0],
-            padding=self.padding[0],
-            stride=self.stride[0],
-        )
-        self.kan_linear = KANLinear(
-            in_features=math.prod(self.unfold_in_size),
-            out_features=math.prod(self.unfold_out_size),
-            **kwargs,
-        )
+        super(KAN, self).__init__()
+        self.grid_size = grid_size
+        self.spline_order = spline_order
 
-    # def reset_parameters(self):
-    #     nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-    #     if self.bias is not None:
-    #         fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-    #         bound = 1 / math.sqrt(fan_in)
-    #         nn.init.uniform_(self.bias, -bound, bound)
+        self.layers = torch.nn.ModuleList()
+        for in_features, out_features in zip(layers_hidden, layers_hidden[1:]):
+            self.layers.append(
+                KANLinear(
+                    in_features,
+                    out_features,
+                    grid_size=grid_size,
+                    spline_order=spline_order,
+                    scale_noise=scale_noise,
+                    scale_base=scale_base,
+                    scale_spline=scale_spline,
+                    base_activation=base_activation,
+                    grid_eps=grid_eps,
+                    grid_range=grid_range,
+                )
+            )
 
-    def forward(self, input):
-        unfold = F.unfold(
-            input,
-            kernel_size=self.kernel_size,
-            padding=self.padding,
-            stride=self.stride,
-            dilation=1,
-        )
-        # unfolded_size = unfold.size()
+    def forward(self, x: torch.Tensor, update_grid=False):
+        for layer in self.layers:
+            if update_grid:
+                layer.update_grid(x)
+            x = layer(x)
+        return x
 
-        # 调整形状以适应KANLinear
-        print('unfold size: ', unfold.size())
-        unfold = unfold.reshape(-1, math.prod(self.unfold_in_size))
-        print("unfold size before linear: ", unfold.size())
-        unfold = self.kan_linear(unfold)
-        print("unfold size after linear: ", unfold.size())
-
-        unfold = unfold.view(-1, self.unfold_out_size[0], self.unfold_out_size[1])
-
-        print("unfold size before fold: ", unfold.size())
-        print(self.kernel_size, self.padding, self.stride)
-        fold = F.fold(
-            unfold,
-            output_size=(self.output_height, self.output_width),
-            kernel_size=self.kernel_size,
-            padding=self.padding,
-            stride=self.stride,
+    def regularization_loss(self, regularize_activation=1.0, regularize_entropy=1.0):
+        return sum(
+            layer.regularization_loss(regularize_activation, regularize_entropy)
+            for layer in self.layers
         )
 
-        if self.bias is not None:
-            fold += self.bias.view(1, -1, 1, 1)
 
-        return fold
+class KAN_Convolution(torch.nn.Module):
+    def __init__(
+        self,
+        kernel_size: tuple = (2, 2),
+        stride: tuple = (1, 1),
+        padding: tuple = (0, 0),
+        dilation: tuple = (1, 1),
+        grid_size: int = 5,
+        spline_order: int = 3,
+        scale_noise: float = 0.1,
+        scale_base: float = 1.0,
+        scale_spline: float = 1.0,
+        base_activation=torch.nn.SiLU,
+        grid_eps: float = 0.02,
+        grid_range: tuple = [-1, 1],
+        device="cpu",
+    ):
+        """
+        Args
+        """
+        super(KAN_Convolution, self).__init__()
+        self.grid_size = grid_size
+        self.spline_order = spline_order
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+        self.device = device
+        self.conv = KANLinear(
+            in_features=math.prod(kernel_size),
+            out_features=1,
+            grid_size=grid_size,
+            spline_order=spline_order,
+            scale_noise=scale_noise,
+            scale_base=scale_base,
+            scale_spline=scale_spline,
+            base_activation=base_activation,
+            grid_eps=grid_eps,
+            grid_range=grid_range,
+        )
+
+    def forward(self, x: torch.Tensor, update_grid=False):
+        return kan_conv2d(
+            x,
+            self.conv,
+            self.kernel_size[0],
+            self.stride,
+            self.dilation,
+            self.padding,
+            self.device,
+        )
+
+    def regularization_loss(self, regularize_activation=1.0, regularize_entropy=1.0):
+        return sum(
+            layer.regularization_loss(regularize_activation, regularize_entropy)
+            for layer in self.layers
+        )
 
 
-class KAN_ConvTranspose_Layer(torch.nn.Module):
+# Script que contiene la implementación del kernel con funciones de activación.
+class KAN_Convolutional_Layer(torch.nn.Module):
     def __init__(
         self,
         n_convs: int = 1,
@@ -387,7 +514,7 @@ class KAN_ConvTranspose_Layer(torch.nn.Module):
             device (str): Device to use
         """
 
-        super(KAN_ConvTranspose_Layer, self).__init__()
+        super(KAN_Convolutional_Layer, self).__init__()
         self.grid_size = grid_size
         self.spline_order = spline_order
         self.kernel_size = kernel_size
@@ -401,7 +528,7 @@ class KAN_ConvTranspose_Layer(torch.nn.Module):
         # Create n_convs KAN_Convolution objects
         for _ in range(n_convs):
             self.convs.append(
-                KANConvTranspose2d(
+                KAN_Convolution(
                     kernel_size=kernel_size,
                     stride=stride,
                     padding=padding,
@@ -417,30 +544,7 @@ class KAN_ConvTranspose_Layer(torch.nn.Module):
                     device=device,
                 )
             )
-            # 测试代码
-            # kan_conv_transpose_layer = KANConvTranspose2d(
-            #     in_channels=3,
-            #     in_shape=(16, 16),
-            #     out_channels=2,
-            #     kernel_size=(3, 3),
-            #     stride=(2, 2),
-            #     padding=(1, 1),
-            #     output_padding=(1, 1),
-            #     grid_size=5,
-            #     spline_order=3,
-            #     scale_noise=0.1,
-            #     scale_base=1.0,
-            #     scale_spline=1.0,
-            #     base_activation=nn.SiLU,
-            #     grid_eps=0.02,
-            #     grid_range=(-1, 1),
-            #     device="cpu",
-            # )
 
-            # input_tensor = torch.randn(8, 3, 16, 16, device="cpu")
-            # output_tensor = kan_conv_transpose_layer(input_tensor)
-            # print(f"Input shape: {input_tensor.shape}")
-            # print(f"Output shape: {output_tensor.shape}")
     def forward(self, x: torch.Tensor, update_grid=False):
         # If there are multiple convolutions, apply them all
         if self.n_convs > 1:

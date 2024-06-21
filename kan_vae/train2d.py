@@ -5,8 +5,9 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from kan_vae_model import KAN_VAE2D
-
+# from kan_vae_model import KAN_VAE2D
+# from kan_vae_model import KAN_VAE2D
+from kan_vae_conv_model import KAN_VAE2D
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
@@ -128,26 +129,26 @@ torch.save(
     "/home/wangr/data/code/MyGithub/kan_vae/model_save/kan_vae_mnist2d.pth",
 )
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
 
-def show_images(originals, reconstructions, n=10):
-    plt.figure(figsize=(20, 6))
-    for i in range(n):
-        ax = plt.subplot(3, n, i + 1)
-        plt.imshow(originals[i][0], cmap="gray")
-        ax.axis("off")
+# def show_images(originals, reconstructions, n=10):
+#     plt.figure(figsize=(20, 6))
+#     for i in range(n):
+#         ax = plt.subplot(3, n, i + 1)
+#         plt.imshow(originals[i][0], cmap="gray")
+#         ax.axis("off")
 
-        ax = plt.subplot(3, n, i + 1 + n)
-        plt.imshow(reconstructions[i][0], cmap="gray")
-        ax.axis("off")
+#         ax = plt.subplot(3, n, i + 1 + n)
+#         plt.imshow(reconstructions[i][0], cmap="gray")
+#         ax.axis("off")
 
-        ax = plt.subplot(3, n, i + 1 + 2 * n)
-        plt.imshow((originals[i] - reconstructions[i])[0], cmap="gray")
-        ax.axis("off")
+#         ax = plt.subplot(3, n, i + 1 + 2 * n)
+#         plt.imshow((originals[i] - reconstructions[i])[0], cmap="gray")
+#         ax.axis("off")
 
 
-originals = torch.cat(originals)[:10]
-reconstructions = torch.cat(reconstructions)[:10]
-show_images(originals, reconstructions, n=10)
-plt.show()
+# originals = torch.cat(originals)[:10]
+# reconstructions = torch.cat(reconstructions)[:10]
+# show_images(originals, reconstructions, n=10)
+# plt.show()

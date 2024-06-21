@@ -7,9 +7,9 @@ from torch.utils.data import DataLoader
 from pytorch_lightning import LightningModule, Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
-from kan_vae_model import KAN_VAE2D
+from kan_vae_conv_model import KAN_VAE2D
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -62,14 +62,14 @@ class KANVAE2DLightning(LightningModule):
         reconstructed, mu, log_var = self.model(x)
         loss = self.model.loss_function(reconstructed, x, mu, log_var)
         self.log("train_loss", loss)
-        return loss
+        return loss/len(batch)
 
     def validation_step(self, batch, batch_idx):
         x, _ = batch
         reconstructed, mu, log_var = self.model(x)
         loss = self.model.loss_function(reconstructed, x, mu, log_var)
         self.log("val_loss", loss)
-        return loss
+        return loss/len(batch)
 
     def configure_optimizers(self):
         return optim.Adam(self.model.parameters(), lr=1e-3)
@@ -77,7 +77,10 @@ class KANVAE2DLightning(LightningModule):
 
 def model_train():
     transform = transforms.Compose(
-        [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
+        [   
+            transforms.ToTensor(), 
+            transforms.Normalize((0.5,), (0.5,))
+        ]
     )
 
     trainset = torchvision.datasets.MNIST(
@@ -94,17 +97,29 @@ def model_train():
         transform=transform,
     )
 
-    trainloader = DataLoader(trainset, batch_size=16, shuffle=True)
-    valloader = DataLoader(valset, batch_size=16, shuffle=False)
+    trainloader = DataLoader(
+        trainset, 
+        batch_size=32,
+        shuffle=True
+    )
+    valloader = DataLoader(
+        valset, 
+        batch_size=32, 
+        shuffle=False
+    )
 
     model = KANVAE2DLightning()
 
-    logger = TensorBoardLogger("tb_logs", name="kan_vae_mnist")
+    logger = TensorBoardLogger(
+        "tb_logs", 
+        name="kan_vae_mnist"
+    )
+    
     checkpoint_callback = ModelCheckpoint(
         monitor="val_loss",
         dirpath="/home/wangr/data/code/MyGithub/kan_vae/model_save/",
         filename="kan_vae_mnist2d-{epoch:02d}-{val_loss:.2f}",
-        save_top_k=1,
+        save_top_k=3,
         mode="min",
     )
 
