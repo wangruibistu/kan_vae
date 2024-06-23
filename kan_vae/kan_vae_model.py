@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from kan_model import KAN, KAN_conv2d, KAN_deconv2d
+from kan_model import KAN, KAN_conv2d  # KAN_deconv2d
 
 import math
 
@@ -44,6 +44,3 @@ class KAN_VAE(nn.Module):
         recon_loss = F.mse_loss(reconstructed, x, reduction="sum")
         kld_loss = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
         return recon_loss + kld_loss
-
-
-

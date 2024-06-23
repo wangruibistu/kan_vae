@@ -12,11 +12,11 @@ from kan_vae_conv_model import KAN_VAE2D
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {device}")
-
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# print(f"Using device: {device}")
+device = torch.device("cpu")
 transform = transforms.Compose(
-    [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
+    [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
 )
 
 trainset = torchvision.datasets.MNIST(
@@ -33,8 +33,8 @@ valset = torchvision.datasets.MNIST(
     transform=transform,
 )
 
-trainloader = DataLoader(trainset, batch_size=32, shuffle=True)
-valloader = DataLoader(valset, batch_size=32, shuffle=False)
+trainloader = DataLoader(trainset, batch_size=2, shuffle=True)
+valloader = DataLoader(valset, batch_size=2, shuffle=False)
 
 input_channels = 1
 encoder_hidden_dims = [8, 16, 32]
