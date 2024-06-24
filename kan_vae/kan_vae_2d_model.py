@@ -5,10 +5,11 @@ import sys
 
 # sys.path.append("/mnt/data18/code/MyGithub/kan_vae/")
 
-from kan_model import KAN_conv2d, KANLinear, KANLinear1D, KANConv2d
+from kan_linear import KANLinear, KANLinear1D
+from kan_conv import KANConv2d
 
 # from kan_vae.kan_conv import KAN_Convolutional_Layer
-from kan_conv_transpose2d import KAN_deconv2d, KAN_ConvTranspose_Layer
+from kan_conv_transpose2d import KAN_ConvTranspose_Layer
 import math
 
 
