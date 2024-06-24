@@ -2,8 +2,9 @@
 Author:         Rui Wang
 Created:        2024-05-18
 Modified-History:
-    2024-05-18, Rui Wang, created
+    2024-05-28, Rui Wang, created
 """
+
 import setuptools
 
 
@@ -21,15 +22,15 @@ with open("requirements.txt", "r") as f:
 
 setuptools.setup(
     name="kan_vae",
-    version="0.0.2",
+    version="0.0.1",
     author="Wang Rui",
     author_email="wangrui@nao.cas.cn",
-    description="The payne emulator based on KAN",  # short description
+    description="The VAE based on KAN",  # short description
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/wangruibistu/KAN_payne",
+    url="https://github.com/wangruibistu/kan_vae",
     project_urls={
-        "Source": "https://github.com/wangruibistu/KAN_payne",
+        "Source": "https://github.com/wangruibistu/kan_vae",
     },
     packages=setuptools.find_packages(),
     license="MIT",
@@ -43,8 +44,7 @@ setuptools.setup(
         "Topic :: Scientific/Engineering :: Astronomy",
     ],
     include_package_data=True,
-    package_data={
-    },
+    package_data={},
     install_requires=requirements,
     python_requires=">=3.11",
 )
