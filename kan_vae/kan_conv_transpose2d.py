@@ -341,7 +341,9 @@ class KAN_ConvTranspose2d(nn.Module):
         # print("unfold size before linear: ", unfold.size())
         unfold = self.kan_linear(unfold)
         # print("unfold size after linear: ", unfold.size())
-        unfold = unfold.view(batch_size, self.unfold_out_size[0], self.unfold_out_size[1])
+        unfold = unfold.view(
+            batch_size, self.unfold_out_size[0], self.unfold_out_size[1]
+        )
         # print("unfold size before fold: ", unfold.size())
         fold = batched_fold(
             unfold,
@@ -430,12 +432,12 @@ class KAN_deconv2d(nn.Module):
             layer.regularization_loss(regularize_activation, regularize_entropy)
             for layer in self.layers
         )
-    
+
 
 def batched_unfold(input, batch_size, kernel_size, padding, stride):
     unfold_outputs = []
     for i in range(0, input.size(0), batch_size):
-        batch_input = input[i:i+batch_size]
+        batch_input = input[i : i + batch_size]
         unfold_output = F.unfold(
             batch_input,
             kernel_size=kernel_size,
@@ -445,10 +447,11 @@ def batched_unfold(input, batch_size, kernel_size, padding, stride):
         unfold_outputs.append(unfold_output)
     return torch.cat(unfold_outputs, dim=0)
 
+
 def batched_fold(input, output_size, kernel_size, padding, stride, batch_size):
     fold_outputs = []
     for i in range(0, input.size(0), batch_size):
-        batch_input = input[i:i+batch_size]
+        batch_input = input[i : i + batch_size]
         fold_output = F.fold(
             batch_input,
             output_size=output_size,
@@ -488,10 +491,11 @@ def convtranspose2d_output_shape(
     return h_out, w_out
 
 
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import math
+def _pair(param):
+    if isinstance(param, tuple):
+        return param
+    return (param, param)
+
 
 class KANConvTranspose2d(nn.Module):
     def __init__(
@@ -505,86 +509,124 @@ class KANConvTranspose2d(nn.Module):
         groups=1,
         bias=True,
         dilation=1,
-        grid_size=5,
+        grid_size=3,
         spline_order=3,
-        scale_noise=0.1,
-        scale_base=1.0,
-        scale_spline=1.0,
         enable_standalone_scale_spline=True,
-        base_activation=nn.SiLU,
-        grid_eps=0.02,
-        grid_range=[-1, 1],
-        device=None,
+        device="cuda"
     ):
         super(KANConvTranspose2d, self).__init__()
-        
+
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
-        self.stride = stride if isinstance(stride, tuple) else (stride, stride)
-        self.padding = padding if isinstance(padding, tuple) else (padding, padding)
-        self.output_padding = output_padding if isinstance(output_padding, tuple) else (output_padding, output_padding)
+        self.kernel_size = _pair(kernel_size)
+        self.stride = _pair(stride)
+        self.padding = _pair(padding)
+        self.output_padding = _pair(output_padding)
         self.groups = groups
-        self.dilation = dilation if isinstance(dilation, tuple) else (dilation, dilation)
-        
+        self.dilation = _pair(dilation)
         self.grid_size = grid_size
         self.spline_order = spline_order
-        
-        h = (grid_range[1] - grid_range[0]) / grid_size
-        grid = (torch.arange(-spline_order, grid_size + spline_order + 1) * h + grid_range[0]).expand(in_channels, -1).contiguous()
-        self.register_buffer("grid", grid)
-        
-        self.base_weight = nn.Parameter(torch.Tensor(in_channels, out_channels // groups, *self.kernel_size))
-        self.spline_weight = nn.Parameter(torch.Tensor(in_channels, out_channels // groups, *self.kernel_size, grid_size + spline_order))
-        
-        if enable_standalone_scale_spline:
-            self.spline_scaler = nn.Parameter(torch.Tensor(in_channels, out_channels // groups, *self.kernel_size))
-        
-        if bias:
-            self.bias = nn.Parameter(torch.Tensor(out_channels))
-        else:
-            self.register_parameter('bias', None)
-        
-        self.scale_noise = scale_noise
-        self.scale_base = scale_base
-        self.scale_spline = scale_spline
         self.enable_standalone_scale_spline = enable_standalone_scale_spline
-        self.base_activation = base_activation()
-        self.grid_eps = grid_eps
-        
+
+        self.base_weight = nn.Parameter(
+            torch.Tensor(
+                in_channels,
+                out_channels // groups,
+                *self.kernel_size,
+            ).to(device)
+        )
+        self.spline_weight = nn.Parameter(
+            torch.Tensor(
+                in_channels,
+                out_channels // groups,
+                *self.kernel_size,
+                grid_size + spline_order,
+            ).to(device)
+        )
+
+        if enable_standalone_scale_spline:
+            self.spline_scaler = nn.Parameter(
+                torch.Tensor(
+                    in_channels,
+                    out_channels // groups,
+                    *self.kernel_size,
+                ).to(device)
+            )
+
+        if bias:
+            self.bias = nn.Parameter(torch.Tensor(out_channels).to(device))
+        else:
+            self.register_parameter("bias", None)
+
+        self.grid = nn.Parameter(
+            torch.linspace(
+                -1,
+                1,
+                grid_size + 2 * spline_order + 1,
+            ).to(device),
+            requires_grad=False,
+        )
         self.reset_parameters()
-    
+
     def reset_parameters(self):
-        nn.init.kaiming_uniform_(self.base_weight, a=math.sqrt(5) * self.scale_base)
-        with torch.no_grad():
-            noise = (torch.rand(*self.spline_weight.shape) - 1/2) * self.scale_noise / self.grid_size
-            self.spline_weight.data.copy_((self.scale_spline if not self.enable_standalone_scale_spline else 1.0) * noise)
-            
-            if self.enable_standalone_scale_spline:
-                nn.init.kaiming_uniform_(self.spline_scaler, a=math.sqrt(5) * self.scale_spline)
-        
+        nn.init.kaiming_uniform_(self.base_weight, a=math.sqrt(5))
+        nn.init.kaiming_uniform_(self.spline_weight, a=math.sqrt(5))
+        if self.enable_standalone_scale_spline:
+            nn.init.constant_(self.spline_scaler, 1.0)
         if self.bias is not None:
             fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.base_weight)
             bound = 1 / math.sqrt(fan_in)
             nn.init.uniform_(self.bias, -bound, bound)
-    
-    def b_splines(self, x):
-        assert x.dim() == 4 and x.size(1) == self.in_channels
-        
-        grid = self.grid
-        x = x.unsqueeze(-1)
-        bases = ((x >= grid[:, :-1]) & (x < grid[:, 1:])).to(x.dtype)
-        
-        for k in range(1, self.spline_order + 1):
-            bases = ((x - grid[:, :-(k+1)]) / (grid[:, k:-1] - grid[:, :-(k+1)]) * bases[:, :, :, :, :-1]) + \
-                    ((grid[:, k+1:] - x) / (grid[:, k+1:] - grid[:, 1:(-k)]) * bases[:, :, :, :, 1:])
-        
-        return bases.contiguous()
-    
+
     @property
     def scaled_spline_weight(self):
-        return self.spline_weight * (self.spline_scaler.unsqueeze(-1) if self.enable_standalone_scale_spline else 1.0)
-    
+        return self.spline_weight * (
+            self.spline_scaler.unsqueeze(-1)
+            if self.enable_standalone_scale_spline
+            else 1.0
+        )
+
+    def base_activation(self, x):
+        return x
+
+    def b_splines(self, x):
+        assert x.dim() == 4 and x.size(1) == self.in_channels
+
+        grid = self.grid  # shape: (grid_size + 2 * spline_order + 1)
+        x_norm = (x - x.min()) / (x.max() - x.min()) * 2 - 1  # Normalize x to [-1, 1]
+
+        # Reshape x for broadcasting
+        x_flat = x_norm.view(
+            x.size(0), x.size(1), -1, 1
+        )  # [batch, channels, height*width, 1]
+
+        # Expand grid for broadcasting
+        grid_expanded = grid.view(1, 1, 1, -1).expand(
+            x_flat.size(0), x_flat.size(1), x_flat.size(2), -1
+        )
+
+        bases = (
+            (x_flat >= grid_expanded[..., :-1]) & (x_flat < grid_expanded[..., 1:])
+        ).float()
+
+        for k in range(1, self.spline_order + 1):
+            weights = (x_flat - grid_expanded[..., : -(k + 1)]) / (
+                grid_expanded[..., k:-1] - grid_expanded[..., : -(k + 1)]
+            )
+            bases_left = weights * bases[..., :-1]
+
+            weights = (grid_expanded[..., k + 1 :] - x_flat) / (
+                grid_expanded[..., k + 1 :] - grid_expanded[..., 1:-k]
+            )
+            bases_right = weights * bases[..., 1:]
+
+            bases = bases_left + bases_right
+
+        # Reshape bases back to match input spatial dimensions
+        bases = bases.view(x.size(0), x.size(1), x.size(2), x.size(3), -1)
+
+        return bases
+
     def forward(self, x):
         base_output = F.conv_transpose2d(
             self.base_activation(x),
@@ -594,20 +636,73 @@ class KANConvTranspose2d(nn.Module):
             padding=self.padding,
             output_padding=self.output_padding,
             groups=self.groups,
-            dilation=self.dilation
+            dilation=self.dilation,
         )
-        
+
         spline_bases = self.b_splines(x)
+
+        # Reshape spline_bases for convolution
+        x_spline = x.unsqueeze(-1) * spline_bases
+        x_spline = x_spline.view(x.size(0), -1, *x.shape[2:])
+
+        # Reshape scaled_spline_weight for convolution
+        scaled_spline_weight = self.scaled_spline_weight.view(
+            self.in_channels, self.out_channels // self.groups, -1, *self.kernel_size
+        )
+        scaled_spline_weight = scaled_spline_weight.reshape(
+            -1, x_spline.size(1), *self.kernel_size
+        ).transpose(
+            1, 0
+        )  # .flatten(0, 1)
+        # print(x_spline.shape, scaled_spline_weight.shape)
         spline_output = F.conv_transpose2d(
-            spline_bases.view(x.size(0), -1, *x.shape[2:]),
-            self.scaled_spline_weight.view(self.in_channels * self.out_channels // self.groups, -1, *self.kernel_size),
+            x_spline,
+            scaled_spline_weight,
             bias=None,
             stride=self.stride,
             padding=self.padding,
             output_padding=self.output_padding,
-            groups=self.groups * self.in_channels,
-            dilation=self.dilation
+            groups=self.groups,
+            dilation=self.dilation,
         )
-        spline_output = spline_output.view(x.size(0), self.out_channels, *spline_output.shape[2:])
-        
+
         return base_output + spline_output
+
+
+class KAN_ConvTranspose_Layer(nn.Module):
+    def __init__(
+        self,
+        in_channel,
+        out_channel,
+        kernel_size,
+        stride=1,
+        padding=0,
+        output_padding=0,
+        groups=1,
+        bias=True,
+        dilation=1,
+        grid_size=3,
+        spline_order=3,
+        enable_standalone_scale_spline=True,
+        device="cuda"
+    ):
+        super(KAN_ConvTranspose_Layer, self).__init__()
+
+        self.trans_conv = KANConvTranspose2d(
+            in_channel,
+            out_channel,
+            kernel_size,
+            stride,
+            padding,
+            output_padding,
+            groups,
+            bias,
+            dilation,
+            grid_size,
+            spline_order,
+            enable_standalone_scale_spline,
+            device=device
+        )
+
+    def forward(self, x):
+        return self.trans_conv(x)

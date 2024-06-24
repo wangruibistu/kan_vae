@@ -19,13 +19,14 @@ class KANLinear1D(torch.nn.Module):
         base_activation=torch.nn.SiLU,
         grid_eps=0.02,
         grid_range=[-1, 1],
+        device="cuda",
     ):
         super(KANLinear1D, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.grid_size = grid_size
         self.spline_order = spline_order
-
+        self.device = device
         h = (grid_range[1] - grid_range[0]) / grid_size
         grid = (
             (
@@ -34,16 +35,19 @@ class KANLinear1D(torch.nn.Module):
             )
             .expand(in_features, -1)
             .contiguous()
+            .to(device)
         )
         self.register_buffer("grid", grid)
 
-        self.base_weight = torch.nn.Parameter(torch.Tensor(out_features, in_features))
+        self.base_weight = torch.nn.Parameter(
+            torch.Tensor(out_features, in_features).to(device)
+        )
         self.spline_weight = torch.nn.Parameter(
-            torch.Tensor(out_features, in_features, grid_size + spline_order)
+            torch.Tensor(out_features, in_features, grid_size + spline_order).to(device)
         )
         if enable_standalone_scale_spline:
             self.spline_scaler = torch.nn.Parameter(
-                torch.Tensor(out_features, in_features)
+                torch.Tensor(out_features, in_features).to(device)
             )
 
         self.scale_noise = scale_noise
@@ -62,7 +66,9 @@ class KANLinear1D(torch.nn.Module):
         with torch.no_grad():
             noise = (
                 (
-                    torch.rand(self.grid_size + 1, self.in_features, self.out_features)
+                    torch.rand(
+                        self.grid_size + 1, self.in_features, self.out_features
+                    ).to(self.device)
                     - 1 / 2
                 )
                 * self.scale_noise
@@ -253,6 +259,7 @@ class KANLinear(torch.nn.Module):
         grid_eps=0.02,
         grid_range=[-1, 1],
         groups: int = 1,
+        device="cpu",
     ):
         super(KANLinear, self).__init__()
         self.in_features = in_features
@@ -263,23 +270,40 @@ class KANLinear(torch.nn.Module):
         h = (grid_range[1] - grid_range[0]) / grid_size
         grid = (
             (
-                torch.arange(-spline_order, grid_size + spline_order + 1) * h
+                torch.arange(
+                    -spline_order,
+                    grid_size + spline_order + 1,
+                )
+                * h
                 + grid_range[0]
             )
             .expand(groups, in_features, -1)
             .contiguous()
-        )
+        ).to(device)
         self.register_buffer("grid", grid)
 
         self.base_weight = torch.nn.Parameter(
-            torch.Tensor(groups, out_features, in_features)
+            torch.Tensor(
+                groups,
+                out_features,
+                in_features,
+            ).to(device)
         )
         self.spline_weight = torch.nn.Parameter(
-            torch.Tensor(groups, out_features, in_features, grid_size + spline_order)
+            torch.Tensor(
+                groups,
+                out_features,
+                in_features,
+                grid_size + spline_order,
+            ).to(device)
         )
         if enable_standalone_scale_spline:
             self.spline_scaler = torch.nn.Parameter(
-                torch.Tensor(groups, out_features, in_features)
+                torch.Tensor(
+                    groups,
+                    out_features,
+                    in_features,
+                ).to(device)
             )
 
         self.scale_noise = scale_noise
@@ -288,7 +312,7 @@ class KANLinear(torch.nn.Module):
         self.enable_standalone_scale_spline = enable_standalone_scale_spline
         self.base_activation = base_activation()
         self.grid_eps = grid_eps
-
+        self.device = device
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -303,6 +327,7 @@ class KANLinear(torch.nn.Module):
                         self.grid_size + 1,
                         self.in_features,
                         self.out_features,
+                        device=self.device,
                     )
                     - 1 / 2
                 )
@@ -336,7 +361,9 @@ class KANLinear(torch.nn.Module):
         """
         assert x.dim() == 3 and x.size(2) == self.in_features
 
-        grid: torch.Tensor = self.grid  # (groups, in_features, grid_size + 2 * spline_order + 1)
+        grid: torch.Tensor = (
+            self.grid
+        )  # (groups, in_features, grid_size + 2 * spline_order + 1)
         x = x.unsqueeze(-1)
         grid = grid.unsqueeze(1)
 
@@ -374,10 +401,16 @@ class KANLinear(torch.nn.Module):
         assert x.dim() == 3 and x.size(2) == self.in_features
         assert y.size() == (x.size(0), x.size(1), self.in_features, self.out_features)
 
-        A = self.b_splines(x).transpose(1, 2)  # (in_features, batch_size, grid_size + spline_order)
+        A = self.b_splines(x).transpose(
+            1, 2
+        )  # (in_features, batch_size, grid_size + spline_order)
         B = y.transpose(1, 2)  # (in_features, batch_size, out_features)
-        solution = torch.linalg.lstsq(A, B).solution  # (in_features, grid_size + spline_order, out_features)
-        result = solution.permute(0, 3, 1, 2)  # (out_features, in_features, grid_size + spline_order)
+        solution = torch.linalg.lstsq(
+            A, B
+        ).solution  # (in_features, grid_size + spline_order, out_features)
+        result = solution.permute(
+            0, 3, 1, 2
+        )  # (out_features, in_features, grid_size + spline_order)
 
         assert result.size() == (
             self.groups,
@@ -396,7 +429,7 @@ class KANLinear(torch.nn.Module):
         )
 
     def forward(self, x: torch.Tensor):
-
+        # print(x.shape, self.in_features)
         assert x.dim() == 3 and x.size(2) == self.in_features
 
         base_output = torch.bmm(
@@ -508,6 +541,7 @@ class KANConv2d(torch.nn.Module):
         base_activation: torch.nn.Module = torch.nn.SiLU,
         grid_eps: float = 0.02,
         grid_range: tuple = (-1, 1),
+        device="cpu",
     ):
         """
         Convolutional layer with KAN kernels. A drop-in replacement for torch.nn.Conv2d.
@@ -541,7 +575,7 @@ class KANConv2d(torch.nn.Module):
         self.dilation = _pair(dilation)
         self.groups = groups
         self.padding_mode = padding_mode
-
+        self.device = device
         if isinstance(padding, str):
             if padding == "same":
                 self.padding = self._calculate_same_padding()
@@ -569,8 +603,8 @@ class KANConv2d(torch.nn.Module):
             raise ValueError("out_channels must be divisible by groups")
 
         self.kan_layer = KANLinear(
-            self._in_dim,
-            out_channels // groups,
+            in_features=self._in_dim,
+            out_features=out_channels // groups,
             grid_size=grid_size,
             spline_order=spline_order,
             scale_noise=scale_noise,
@@ -581,6 +615,7 @@ class KANConv2d(torch.nn.Module):
             grid_eps=grid_eps,
             grid_range=grid_range,
             groups=groups,
+            device=device,
         )
 
     def forward(self, x):
@@ -609,12 +644,26 @@ class KANConv2d(torch.nn.Module):
             .permute(1, 0, 2)
         )  # [groups, B * H_out * W_out, out_channels // groups]
 
-        output = self.kan_layer(x_unf)  # [groups, B * H_out * W_out, out_channels // groups]
-        output = output.permute(1, 0, 2).reshape(batch_size, n_patches, -1).permute(0, 2, 1)
+        output = self.kan_layer(
+            x_unf
+        )  # [groups, B * H_out * W_out, out_channels // groups]
+        output = (
+            output.permute(1, 0, 2).reshape(batch_size, n_patches, -1).permute(0, 2, 1)
+        )
 
         # Compute output dimensions
-        output_height = (x.shape[2] + 2 * padding[0] - self.dilation[0] * (self.kernel_size[0] - 1) - 1) // self.stride[0] + 1
-        output_width = (x.shape[3] + 2 * padding[1] - self.dilation[1] * (self.kernel_size[1] - 1) - 1) // self.stride[1] + 1
+        output_height = (
+            x.shape[2]
+            + 2 * padding[0]
+            - self.dilation[0] * (self.kernel_size[0] - 1)
+            - 1
+        ) // self.stride[0] + 1
+        output_width = (
+            x.shape[3]
+            + 2 * padding[1]
+            - self.dilation[1] * (self.kernel_size[1] - 1)
+            - 1
+        ) // self.stride[1] + 1
 
         # Reshape output to the expected output format
         output = output.view(
@@ -674,7 +723,7 @@ def _pair(x):
 #             self.bias = torch.nn.Parameter(torch.Tensor(out_channels))
 #         else:
 #             self.register_parameter("bias", None)
-        
+
 #         self.kan_conv2d = KANConv2d(
 #             self.in_channels,
 #             self.out_channels,
@@ -948,24 +997,3 @@ class KAN_conv2d(nn.Module):
             layer.regularization_loss(regularize_activation, regularize_entropy)
             for layer in self.layers
         )
-
-
-class LayerNorm2D(nn.Module):
-    def __init__(self, num_features, eps=1e-5):
-        super().__init__()
-        self.eps = eps
-
-        self.gamma = nn.Parameter(torch.ones(1, num_features, 1, 1))
-        self.beta = nn.Parameter(torch.zeros(1, num_features, 1, 1))
-
-    def forward(self, x):
-        # Compute the mean and variance
-        mean = x.mean(dim=1, keepdim=True)
-        var = x.var(dim=1, keepdim=True, unbiased=False)
-
-        # Normalize
-        x_normalized = (x - mean) / torch.sqrt(var + self.eps)
-
-        # Scale and shift
-        return self.gamma * x_normalized + self.beta
-

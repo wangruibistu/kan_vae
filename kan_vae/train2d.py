@@ -7,14 +7,17 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 # from kan_vae_model import KAN_VAE2D
 # from kan_vae_model import KAN_VAE2D
-from kan_vae_conv_model import KAN_VAE2D
+import sys
+
+# sys.path.append("/mnt/data18/code/MyGithub/kan_vae/")
+from kan_vae_2d_model import KAN_VAE2D, KAN_VAE_model
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
 # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # print(f"Using device: {device}")
-device = torch.device("cpu")
+device = torch.device("cuda:0")
 transform = transforms.Compose(
     [transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))]
 )
@@ -33,24 +36,19 @@ valset = torchvision.datasets.MNIST(
     transform=transform,
 )
 
-trainloader = DataLoader(trainset, batch_size=2, shuffle=True)
-valloader = DataLoader(valset, batch_size=2, shuffle=False)
+trainloader = DataLoader(trainset, batch_size=64, shuffle=True)
+valloader = DataLoader(valset, batch_size=64, shuffle=False)
 
-input_channels = 1
-encoder_hidden_dims = [8, 16, 32]
-decoder_hidden_dims = [32, 16, 8]
-latent_dim = 64
 
-model = KAN_VAE2D(
-    input_channels,
-    encoder_hidden_dims,
-    decoder_hidden_dims,
-    latent_dim,
+model = KAN_VAE_model(
+    input_channels=1,
     input_shape=(28, 28),
+    latent_dim=16,
     encoderkwargs={
-        "kernel_sizes": [3, 3, 3],
-        "strides": [2, 2, 2],
-        "paddings": [1, 1, 1],
+        "layers_hidden": [1, 16, 32],
+        "kernel_sizes": [(3, 3), (3, 3)],
+        "strides": [(2, 2), (2, 2)],
+        "paddings": [(1, 1), (1, 1)],
         "grid_size": 5,
         "spline_order": 3,
         "scale_noise": 0.1,
@@ -59,20 +57,19 @@ model = KAN_VAE2D(
         "base_activation": torch.nn.SiLU,
         "grid_eps": 0.02,
         "grid_range": [-1, 1],
+        "device": device,
     },
     decoderkwargs={
-        "kernel_sizes": [3, 3, 3],
-        "strides": [2, 2, 2],
-        "paddings": [1, 1, 1],
-        "output_paddings": [(0, 0), (1, 1), (1, 1)],
+        "layers_hidden": [32, 16, 1],
+        "kernel_sizes": [(3, 3), (3, 3)],
+        "strides": [(2, 2), (2, 2)],
+        "paddings": [(1, 1), (1, 1)],
+        "output_paddings": [(1, 1), (1, 1)],
+        "groups": 1,
         "grid_size": 5,
         "spline_order": 3,
-        "scale_noise": 0.1,
-        "scale_base": 1.0,
-        "scale_spline": 1.0,
-        "base_activation": torch.nn.SiLU,
-        "grid_eps": 0.02,
-        "grid_range": [-1, 1],
+        "dilation": (1, 1),
+        "device": device,
     },
 ).to(device)
 
