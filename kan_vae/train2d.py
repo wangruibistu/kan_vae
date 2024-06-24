@@ -5,11 +5,7 @@ import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-# from kan_vae_model import KAN_VAE2D
-# from kan_vae_model import KAN_VAE2D
-import sys
 
-# sys.path.append("/mnt/data18/code/MyGithub/kan_vae/")
 from kan_vae_2d_model import KAN_VAE2D, KAN_VAE_model
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"

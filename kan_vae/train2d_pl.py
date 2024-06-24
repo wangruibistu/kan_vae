@@ -9,11 +9,8 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
 from kan_vae_2d_model import KAN_VAE_model
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
-
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# print(f"Using device: {device}")
 
 
 class KANVAE2DLightning(LightningModule):
