@@ -106,7 +106,7 @@ def model_train():
     )
 
     trainer = Trainer(
-        max_epochs=100,
+        max_epochs=1000,
         accelerator="gpu",
         devices="-1",
         check_val_every_n_epoch=1,
