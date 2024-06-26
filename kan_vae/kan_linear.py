@@ -19,14 +19,14 @@ class KANLinear1D(torch.nn.Module):
         base_activation=torch.nn.SiLU,
         grid_eps=0.02,
         grid_range=[-1, 1],
-        device="cuda",
+        # device="cuda",
     ):
         super(KANLinear1D, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.grid_size = grid_size
         self.spline_order = spline_order
-        self.device = device
+        # self.device = device
         h = (grid_range[1] - grid_range[0]) / grid_size
         grid = (
             (
@@ -35,19 +35,19 @@ class KANLinear1D(torch.nn.Module):
             )
             .expand(in_features, -1)
             .contiguous()
-            .to(device)
+            # .to(device)
         )
         self.register_buffer("grid", grid)
 
         self.base_weight = torch.nn.Parameter(
-            torch.Tensor(out_features, in_features).to(device)
+            torch.Tensor(out_features, in_features)#.to(device)
         )
         self.spline_weight = torch.nn.Parameter(
-            torch.Tensor(out_features, in_features, grid_size + spline_order).to(device)
+            torch.Tensor(out_features, in_features, grid_size + spline_order)#.to(device)
         )
         if enable_standalone_scale_spline:
             self.spline_scaler = torch.nn.Parameter(
-                torch.Tensor(out_features, in_features).to(device)
+                torch.Tensor(out_features, in_features)#.to(device)
             )
 
         self.scale_noise = scale_noise
@@ -68,7 +68,7 @@ class KANLinear1D(torch.nn.Module):
                 (
                     torch.rand(
                         self.grid_size + 1, self.in_features, self.out_features
-                    ).to(self.device)
+                    )#.to(self.device)
                     - 1 / 2
                 )
                 * self.scale_noise
@@ -190,14 +190,14 @@ class KANLinear1D(torch.nn.Module):
         x_sorted = torch.sort(x, dim=0)[0]
         grid_adaptive = x_sorted[
             torch.linspace(
-                0, batch - 1, self.grid_size + 1, dtype=torch.int64, device=x.device
+                0, batch - 1, self.grid_size + 1, dtype=torch.int64,# device=x.device
             )
         ]
 
         uniform_step = (x_sorted[-1] - x_sorted[0] + 2 * margin) / self.grid_size
         grid_uniform = (
             torch.arange(
-                self.grid_size + 1, dtype=torch.float32, device=x.device
+                self.grid_size + 1, dtype=torch.float32,# device=x.device
             ).unsqueeze(1)
             * uniform_step
             + x_sorted[0]
@@ -209,11 +209,11 @@ class KANLinear1D(torch.nn.Module):
             [
                 grid[:1]
                 - uniform_step
-                * torch.arange(self.spline_order, 0, -1, device=x.device).unsqueeze(1),
+                * torch.arange(self.spline_order, 0, -1,).unsqueeze(1),
                 grid,
                 grid[-1:]
                 + uniform_step
-                * torch.arange(1, self.spline_order + 1, device=x.device).unsqueeze(1),
+                * torch.arange(1, self.spline_order + 1,).unsqueeze(1),
             ],
             dim=0,
         )
@@ -259,7 +259,7 @@ class KANLinear(torch.nn.Module):
         grid_eps=0.02,
         grid_range=[-1, 1],
         groups: int = 1,
-        device="cpu",
+        # device="cpu",
     ):
         super(KANLinear, self).__init__()
         self.in_features = in_features
@@ -279,7 +279,7 @@ class KANLinear(torch.nn.Module):
             )
             .expand(groups, in_features, -1)
             .contiguous()
-        ).to(device)
+        )#.to(device)
         self.register_buffer("grid", grid)
 
         self.base_weight = torch.nn.Parameter(
@@ -287,7 +287,7 @@ class KANLinear(torch.nn.Module):
                 groups,
                 out_features,
                 in_features,
-            ).to(device)
+            )#.to(device)
         )
         self.spline_weight = torch.nn.Parameter(
             torch.Tensor(
@@ -295,7 +295,7 @@ class KANLinear(torch.nn.Module):
                 out_features,
                 in_features,
                 grid_size + spline_order,
-            ).to(device)
+            )#.to(device)
         )
         if enable_standalone_scale_spline:
             self.spline_scaler = torch.nn.Parameter(
@@ -303,7 +303,7 @@ class KANLinear(torch.nn.Module):
                     groups,
                     out_features,
                     in_features,
-                ).to(device)
+                )#.to(device)
             )
 
         self.scale_noise = scale_noise
@@ -312,7 +312,7 @@ class KANLinear(torch.nn.Module):
         self.enable_standalone_scale_spline = enable_standalone_scale_spline
         self.base_activation = base_activation()
         self.grid_eps = grid_eps
-        self.device = device
+        # self.device = device
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -327,7 +327,7 @@ class KANLinear(torch.nn.Module):
                         self.grid_size + 1,
                         self.in_features,
                         self.out_features,
-                        device=self.device,
+                        # device=self.device,
                     )
                     - 1 / 2
                 )
@@ -462,13 +462,13 @@ class KANLinear(torch.nn.Module):
         grid_adaptive = x_sorted[
             :,
             torch.linspace(
-                0, batch - 1, self.grid_size + 1, dtype=torch.int64, device=x.device
+                0, batch - 1, self.grid_size + 1, dtype=torch.int64, #device=x.device
             ),
         ]
 
         uniform_step = (x_sorted[:, -1] - x_sorted[:, 0] + 2 * margin) / self.grid_size
         grid_uniform = (
-            torch.arange(self.grid_size + 1, dtype=torch.float32, device=x.device)
+            torch.arange(self.grid_size + 1, dtype=torch.float32,)#device=x.device)
             .unsqueeze(1)
             .unsqueeze(0)
             * uniform_step.unsqueeze(1)
@@ -481,13 +481,13 @@ class KANLinear(torch.nn.Module):
             [
                 grid[:, :1]
                 - uniform_step.unsqueeze(1)
-                * torch.arange(self.spline_order, 0, -1, device=x.device)
+                * torch.arange(self.spline_order, 0, -1,)# device=x.device)
                 .unsqueeze(1)
                 .unsqueeze(0),
                 grid,
                 grid[:, -1:]
                 + uniform_step.unsqueeze(1)
-                * torch.arange(1, self.spline_order + 1, device=x.device)
+                * torch.arange(1, self.spline_order + 1,)# device=x.device)
                 .unsqueeze(1)
                 .unsqueeze(0),
             ],
@@ -541,7 +541,7 @@ class KANConv2d(torch.nn.Module):
         base_activation: torch.nn.Module = torch.nn.SiLU,
         grid_eps: float = 0.02,
         grid_range: tuple = (-1, 1),
-        device="cpu",
+        # device="cpu",
     ):
         """
         Convolutional layer with KAN kernels. A drop-in replacement for torch.nn.Conv2d.
@@ -575,7 +575,7 @@ class KANConv2d(torch.nn.Module):
         self.dilation = _pair(dilation)
         self.groups = groups
         self.padding_mode = padding_mode
-        self.device = device
+        # self.device = device
         if isinstance(padding, str):
             if padding == "same":
                 self.padding = self._calculate_same_padding()
@@ -615,7 +615,7 @@ class KANConv2d(torch.nn.Module):
             grid_eps=grid_eps,
             grid_range=grid_range,
             groups=groups,
-            device=device,
+            # device=device,
         )
 
     def forward(self, x):

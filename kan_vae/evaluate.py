@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from kan_vae_model import KAN_VAE
+from kan_vae_2d_model import KAN_VAE_model
 
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "3"
@@ -36,16 +37,51 @@ encoder_hidden_dims = [256, 64]
 decoder_hidden_dims = [64, 256]
 latent_dim = 16
 
-vae = KAN_VAE(
-    input_dim,
-    encoder_hidden_dims,
-    decoder_hidden_dims,
-    latent_dim,
-).to(device)
+# model = KAN_VAE(
+#     input_dim,
+#     encoder_hidden_dims,
+#     decoder_hidden_dims,
+#     latent_dim,
+# ).to(device)
 
-model_path = "/home/wangr/data/code/MyGithub/kan_vae/model_save/kan_vae_mnist.pth"
-vae.load_state_dict(torch.load(model_path))
-vae.eval()
+model = KAN_VAE_model(
+    input_channels=1,
+    input_shape=(28, 28),
+    latent_dim=16,
+    encoderkwargs={
+        "layers_hidden": [1, 16, 32],
+        "kernel_sizes": [(3, 3), (3, 3)],
+        "strides": [(2, 2), (2, 2)],
+        "paddings": [(1, 1), (1, 1)],
+        "grid_size": 5,
+        "spline_order": 3,
+        "scale_noise": 0.1,
+        "scale_base": 1.0,
+        "scale_spline": 1.0,
+        "base_activation": torch.nn.SiLU,
+        "grid_eps": 0.02,
+        "grid_range": [-1, 1],
+        "device": device,
+    },
+    decoderkwargs={
+        "layers_hidden": [32, 16, 1],
+        "kernel_sizes": [(3, 3), (3, 3)],
+        "strides": [(2, 2), (2, 2)],
+        "paddings": [(1, 1), (1, 1)],
+        "output_paddings": [(1, 1), (1, 1)],
+        "groups": 1,
+        "grid_size": 5,
+        "spline_order": 3,
+        "dilation": (1, 1),
+        "device": device,
+    },
+)
+
+# model_path = "/home/wangr/data/code/MyGithub/kan_vae/model_save/kan_vae_mnist.pth"
+model_path = "/home/wangr/data/code/MyGithub/kan_vae/model_save/kan_vae_mnist2d-epoch=208-val_loss=64.61.pth"
+
+model.load_state_dict(torch.load(model_path))
+model.eval()
 
 val_loss = 0
 reconstruction_errors = []
@@ -57,8 +93,8 @@ with torch.no_grad():
         x, _ = batch
         x = x.view(x.size(0), -1).to(device)
 
-        reconstructed, mu, log_var = vae(x)
-        loss = vae.loss_function(reconstructed, x, mu, log_var)
+        reconstructed, mu, log_var = model(x)
+        loss = model.loss_function(reconstructed, x, mu, log_var)
         val_loss += loss.item()
 
         reconstruction_error = torch.mean((reconstructed - x) ** 2, dim=1)

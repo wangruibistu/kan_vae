@@ -26,7 +26,7 @@ class KANConv2d(torch.nn.Module):
         base_activation: torch.nn.Module = torch.nn.SiLU,
         grid_eps: float = 0.02,
         grid_range: tuple = (-1, 1),
-        device="cpu",
+        # device="cpu",
     ):
         """
         Convolutional layer with KAN kernels. A drop-in replacement for torch.nn.Conv2d.
@@ -60,7 +60,7 @@ class KANConv2d(torch.nn.Module):
         self.dilation = _pair(dilation)
         self.groups = groups
         self.padding_mode = padding_mode
-        self.device = device
+        # self.device = device
         if isinstance(padding, str):
             if padding == "same":
                 self.padding = self._calculate_same_padding()
@@ -100,7 +100,7 @@ class KANConv2d(torch.nn.Module):
             grid_eps=grid_eps,
             grid_range=grid_range,
             groups=groups,
-            device=device,
+            # device=device,
         )
 
     def forward(self, x):

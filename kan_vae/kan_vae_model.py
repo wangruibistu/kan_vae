@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from kan_linear import KAN  # KAN_deconv2d
-
-import math
+from kan_linear import KAN  
 
 
 class KAN_VAE(nn.Module):

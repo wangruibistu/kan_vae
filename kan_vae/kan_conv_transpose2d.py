@@ -25,7 +25,7 @@ class KANConvTranspose2d(nn.Module):
         grid_size=3,
         spline_order=3,
         enable_standalone_scale_spline=True,
-        device="cuda"
+        # device="cuda"
     ):
         super(KANConvTranspose2d, self).__init__()
 
@@ -46,7 +46,7 @@ class KANConvTranspose2d(nn.Module):
                 in_channels,
                 out_channels // groups,
                 *self.kernel_size,
-            ).to(device)
+            )#.to(device)
         )
         self.spline_weight = nn.Parameter(
             torch.Tensor(
@@ -54,7 +54,7 @@ class KANConvTranspose2d(nn.Module):
                 out_channels // groups,
                 *self.kernel_size,
                 grid_size + spline_order,
-            ).to(device)
+            )#.to(device)
         )
 
         if enable_standalone_scale_spline:
@@ -63,11 +63,11 @@ class KANConvTranspose2d(nn.Module):
                     in_channels,
                     out_channels // groups,
                     *self.kernel_size,
-                ).to(device)
+                )#.to(device)
             )
 
         if bias:
-            self.bias = nn.Parameter(torch.Tensor(out_channels).to(device))
+            self.bias = nn.Parameter(torch.Tensor(out_channels))#.to(device))
         else:
             self.register_parameter("bias", None)
 
@@ -76,7 +76,7 @@ class KANConvTranspose2d(nn.Module):
                 -1,
                 1,
                 grid_size + 2 * spline_order + 1,
-            ).to(device),
+            ),#.to(device),
             requires_grad=False,
         )
         self.reset_parameters()
@@ -196,7 +196,7 @@ class KAN_ConvTranspose_Layer(nn.Module):
         grid_size=3,
         spline_order=3,
         enable_standalone_scale_spline=True,
-        device="cuda"
+        # device="cuda"
     ):
         super(KAN_ConvTranspose_Layer, self).__init__()
 
@@ -213,7 +213,7 @@ class KAN_ConvTranspose_Layer(nn.Module):
             grid_size,
             spline_order,
             enable_standalone_scale_spline,
-            device=device
+            # device=device
         )
 
     def forward(self, x):
